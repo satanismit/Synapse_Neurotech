@@ -1,0 +1,23 @@
+# Dataset
+Dataset/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Output/Artifacts (Optional: comment out if you want to track models)
+Codebase/output/
+*.pth
+
+# OS specific
+.DS_Store
+Thumbs.db

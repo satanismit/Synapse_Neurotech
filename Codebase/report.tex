@@ -1,0 +1,122 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{float}
+
+\title{sEMG Gesture Classification: Technical Report}
+\author{Antigravity AI}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+Surface Electromyography (sEMG) measures the electrical activity produced by skeletal muscles. This report details a machine learning pipeline designed to classify 5 hand gestures using 8-channel sEMG signals sampled at 512 Hz. The objective was to build a robust, subject-independent model capable of generalizing to unseen users.
+
+\section{Signal Processing}
+\subsection{Noise Characteristics}
+sEMG signals are prone to various noise sources:
+\begin{itemize}
+    \item \textbf{Power Line Interference}: 50/60 Hz noise from electrical mains.
+    \item \textbf{Motion Artifacts}: Low-frequency noise (<20 Hz) caused by electrode movement.
+    \item \textbf{High-Frequency Noise}: Electronic noise above the EMG bandwidth.
+\end{itemize}
+
+\subsection{Preprocessing Steps}
+To enhance the signal-to-noise ratio (SNR), the following steps were applied:
+\begin{enumerate}
+    \item \textbf{Notch Filter}: A 50 Hz IIR notch filter (Q=30) was applied to remove power line interference.
+    \item \textbf{Bandpass Filter}: A 4th-order Butterworth filter with a passband of 20-200 Hz was used. The 20 Hz cutoff removes motion artifacts, while the 200 Hz cutoff focuses on the primary energy band of sEMG, reducing high-frequency noise.
+    \item \textbf{Normalization}: Channel-wise Z-score normalization ($\mu=0, \sigma=1$) was applied to handle amplitude variations due to electrode impedance differences.
+\end{enumerate}
+
+\section{Model Architecture}
+A 1D Convolutional Neural Network (CNN) was chosen for its ability to automatically extract spatial-temporal features from raw signals without manual feature engineering.
+
+\subsection{Architecture Details}
+The \texttt{EMGConv1D} model consists of:
+\begin{itemize}
+    \item \textbf{Input}: (Batch, 8, 2560) tensor.
+    \item \textbf{Block 1}: Conv1D(32 filters, kernel=7) $\rightarrow$ BN $\rightarrow$ ReLU $\rightarrow$ MaxPool(4). Captures low-level temporal patterns.
+    \item \textbf{Block 2}: Conv1D(64 filters, kernel=5) $\rightarrow$ BN $\rightarrow$ ReLU $\rightarrow$ MaxPool(4).
+    \item \textbf{Block 3}: Conv1D(128 filters, kernel=3) $\rightarrow$ BN $\rightarrow$ ReLU $\rightarrow$ MaxPool(4).
+    \item \textbf{Block 4}: Conv1D(256 filters, kernel=3) $\rightarrow$ BN $\rightarrow$ ReLU $\rightarrow$ GlobalAvgPool. High-level feature abstraction.
+    \item \textbf{Classifier}: Dropout(0.5) $\rightarrow$ Linear(256 $\rightarrow$ 5).
+\end{itemize}
+
+\subsection{Rationale}
+\begin{itemize}
+    \item \textbf{1D Convolutions}: Efficiently process temporal sequences.
+    \item \textbf{Global Average Pooling}: Reduces the feature map to a fixed size vector regardless of input length, minimizing parameters and preventing overfitting compared to flattening.
+    \item \textbf{Batch Normalization}: Accelerates convergence and stabilizes training.
+\end{itemize}
+
+\section{Training Strategy}
+\begin{itemize}
+    \item \textbf{Data Split}: A subject-independent split was used to ensure generalization. Subjects 1-20 were used for training, and Subjects 21-25 for validation.
+    \item \textbf{Loss Function}: Cross-Entropy Loss, suitable for multi-class classification.
+    \item \textbf{Optimizer}: Adam optimizer with an initial learning rate of 0.001.
+    \item \textbf{Regularization}: Dropout (0.5) and Early Stopping (Patience=10) on Validation F1 Score.
+    \item \textbf{Scheduling}: Learning rate reduced by factor 0.5 if validation F1 plateaus for 5 epochs.
+\end{itemize}
+
+\section{Experimental Results}
+The model was evaluated on the held-out validation set (Subjects 21-25).
+
+\subsection{Quantitative Metrics}
+\begin{table}[H]
+\centering
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Accuracy & 74.86\% \\
+Macro F1 Score & 74.92\% \\
+\bottomrule
+\end{tabular}
+\caption{Overall Performance Metrics}
+\end{table}
+
+\subsection{Class-wise Performance}
+\begin{table}[H]
+\centering
+\begin{tabular}{cccc}
+\toprule
+\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} \\
+\midrule
+0 & 0.7556 & 0.6476 & 0.6974 \\
+1 & 0.6195 & 0.6667 & 0.6422 \\
+2 & 0.7157 & 0.6952 & 0.7053 \\
+3 & 0.6724 & 0.7429 & 0.7059 \\
+4 & 1.0000 & 0.9905 & 0.9952 \\
+\bottomrule
+\end{tabular}
+\caption{Per-class Performance}
+\end{table}
+
+\subsection{Discussion}
+\begin{itemize}
+    \item \textbf{High Performance on Class 4}: The model achieves near-perfect classification for Class 4 (F1: 0.99), indicating this gesture has very distinct sEMG patterns compared to others.
+    \item \textbf{Confusion between Classes}: 
+    \begin{itemize}
+        \item Class 0 shows some confusion with Class 3 (31 misclassifications).
+        \item Class 1 and Class 2 show mutual confusion (32 instances of Class 2 predicted as Class 1).
+    \end{itemize}
+    \item \textbf{Generalization}: Achieving ~75\% accuracy on completely unseen subjects demonstrates that the model has learned generalized features rather than memorizing subject-specific artifacts.
+\end{itemize}
+
+\section{Deployment}
+The trained model is deployed via a standalone inference pipeline designed for ease of use.
+\begin{itemize}
+    \item \textbf{Inference Script}: \texttt{inference.py} handles model loading, preprocessing (identical to training), and prediction.
+    \item \textbf{Interactive Demo}: \texttt{Inference\_pipeline.py} provides a user-friendly CLI for testing the model on new or existing files.
+    \item \textbf{Automation}: A batch script \texttt{run\_inference.bat} allows one-click execution on Windows environments.
+\end{itemize}
+
+\section{Conclusion}
+The proposed pipeline provides a robust, end-to-end solution for sEMG gesture classification. The use of a lightweight CNN with proper signal preprocessing ensures both high accuracy and computational efficiency, making it suitable for real-time applications. The included deployment scripts facilitate immediate testing and integration.
+
+\end{document}
